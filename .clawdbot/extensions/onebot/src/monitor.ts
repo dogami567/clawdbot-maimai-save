@@ -8,6 +8,7 @@ import type { PluginRuntime } from "clawdbot/plugin-sdk";
 import WebSocket from "ws";
 
 import type { ResolvedOneBotAccount } from "./accounts.js";
+import { getOneBotImageUrl } from "./api.js";
 import { resolveOneBotInboundImage } from "./media-cache.js";
 
 type ChannelLog = {
@@ -110,7 +111,11 @@ function maybeAttachRecentMedia(params: {
   return `${recent.mediaTokens}\n${body}`;
 }
 
-async function rewriteInboundImageRefs(text: string): Promise<string> {
+async function rewriteInboundImageRefs(params: {
+  text: string;
+  resolveFileRef?: (fileRef: string) => Promise<string | null>;
+}): Promise<string> {
+  const text = params.text;
   if (!text.includes("[image:")) return text;
 
   const matches = [...text.matchAll(/\[image:([^\]]+)\]/g)];
@@ -122,7 +127,17 @@ async function rewriteInboundImageRefs(text: string): Promise<string> {
 
   const resolvedPairs = await Promise.all(
     uniqueRefs.map(async (ref) => {
-      const resolved = await resolveOneBotInboundImage(ref);
+      let sourceRef = ref;
+      if (!/^https?:\/\//i.test(sourceRef) && params.resolveFileRef) {
+        try {
+          const url = await params.resolveFileRef(sourceRef);
+          if (url) sourceRef = url;
+        } catch {
+          // Non-fatal: keep original ref.
+        }
+      }
+
+      const resolved = await resolveOneBotInboundImage(sourceRef);
       return [ref, resolved] as const;
     })
   );
@@ -394,7 +409,18 @@ async function processInboundMessage(params: {
   if (!rawBody.trim()) return;
 
   try {
-    rawBody = await rewriteInboundImageRefs(rawBody);
+    rawBody = await rewriteInboundImageRefs({
+      text: rawBody,
+      resolveFileRef: async (fileRef) => {
+        if (!account.httpUrl) return null;
+        return await getOneBotImageUrl({
+          httpUrl: account.httpUrl,
+          accessToken: account.accessToken,
+          timeoutMs: account.apiTimeoutMs,
+          file: fileRef,
+        });
+      },
+    });
   } catch {
     // Non-fatal: keep original refs if caching fails.
   }
