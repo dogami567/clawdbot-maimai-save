@@ -37,6 +37,16 @@ describe("onebot message parsing", () => {
     expect(parsed.text).toBe("@123 hello");
   });
 
+  it("falls back to normalized text mention match", () => {
+    const parsed = extractOneBotTextAndMentions({
+      message: "[CQ:at,foo=bar,qq=123] hello",
+      selfId: "123",
+    });
+    expect(parsed.wasMentioned).toBe(true);
+    expect(parsed.hasAnyMention).toBe(true);
+    expect(parsed.text).toBe("@123 hello");
+  });
+
   it("detects segment at mentions that use id field", () => {
     const parsed = extractOneBotTextAndMentions({
       message: [{ type: "at", data: { id: 123 } }],

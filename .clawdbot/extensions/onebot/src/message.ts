@@ -96,10 +96,12 @@ export function extractOneBotTextAndMentions(params: {
     const raw = params.message;
     const mentionSegments = [...raw.matchAll(/\[CQ:at,[^\]]+\]/gi)].map((m) => m[0]);
     const hasAnyMention = mentionSegments.length > 0;
-    const wasMentioned = selfId
-      ? mentionSegments.some((seg) => parseCqAt(seg) === selfId)
-      : false;
-    return { text: stripCqCodes(raw), wasMentioned, hasAnyMention };
+    let wasMentioned = selfId ? mentionSegments.some((seg) => parseCqAt(seg) === selfId) : false;
+    const text = stripCqCodes(raw);
+    if (!wasMentioned && selfId && text.includes(`@${selfId}`)) {
+      wasMentioned = true;
+    }
+    return { text, wasMentioned, hasAnyMention };
   }
 
   if (Array.isArray(params.message)) {
@@ -152,7 +154,11 @@ export function extractOneBotTextAndMentions(params: {
         continue;
       }
     }
-    return { text: parts.join("").trim(), wasMentioned, hasAnyMention };
+    const text = parts.join("").trim();
+    if (!wasMentioned && selfId && text.includes(`@${selfId}`)) {
+      wasMentioned = true;
+    }
+    return { text, wasMentioned, hasAnyMention };
   }
 
   return { text: "", wasMentioned: false, hasAnyMention: false };
