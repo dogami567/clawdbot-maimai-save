@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -83,6 +84,10 @@ async function cleanupIfNeeded(manifest: MediaManifest): Promise<MediaManifest> 
       if (exists) {
         await fs.unlink(item.path).catch(() => undefined);
       }
+      const gifPath = path.join(ROOT_DIR, `${hash}.gif`);
+      if (await fileExists(gifPath)) {
+        await fs.unlink(gifPath).catch(() => undefined);
+      }
       continue;
     }
 
@@ -93,6 +98,34 @@ async function cleanupIfNeeded(manifest: MediaManifest): Promise<MediaManifest> 
     lastCleanupDay: today,
     items: nextItems,
   };
+}
+
+function runCommand(command: string, args: string[]): boolean {
+  const result = spawnSync(command, args, {
+    stdio: "ignore",
+    timeout: 15_000,
+  });
+  return result.status === 0;
+}
+
+async function extractGifFirstFrameToPng(sourceGifPath: string, targetPngPath: string): Promise<boolean> {
+  const magickOk = runCommand("magick", ["convert", `${sourceGifPath}[0]`, targetPngPath]);
+  if (magickOk && (await fileExists(targetPngPath))) return true;
+
+  const convertOk = runCommand("convert", [`${sourceGifPath}[0]`, targetPngPath]);
+  if (convertOk && (await fileExists(targetPngPath))) return true;
+
+  const ffmpegOk = runCommand("ffmpeg", [
+    "-y",
+    "-i",
+    sourceGifPath,
+    "-vf",
+    "select=eq(n\\,0)",
+    "-vframes",
+    "1",
+    targetPngPath,
+  ]);
+  return ffmpegOk && (await fileExists(targetPngPath));
 }
 
 export async function resolveOneBotInboundImage(ref: string): Promise<string> {
@@ -123,21 +156,35 @@ export async function resolveOneBotInboundImage(ref: string): Promise<string> {
     const hash = createHash("sha256").update(buffer).digest("hex");
     const mime = response.headers.get("content-type") ?? undefined;
     const ext = guessExtension({ mime, source: trimmed });
-    const filePath = path.join(ROOT_DIR, `${hash}${ext}`);
 
     await fs.mkdir(ROOT_DIR, { recursive: true });
-    if (!(await fileExists(filePath))) {
-      await fs.writeFile(filePath, buffer);
+
+    const sourcePath = path.join(ROOT_DIR, `${hash}${ext}`);
+    if (!(await fileExists(sourcePath))) {
+      await fs.writeFile(sourcePath, buffer);
+    }
+
+    let resolvedPath = sourcePath;
+    if (ext === ".gif") {
+      const pngPath = path.join(ROOT_DIR, `${hash}.png`);
+      if (!(await fileExists(pngPath))) {
+        const converted = await extractGifFirstFrameToPng(sourcePath, pngPath);
+        if (converted) {
+          resolvedPath = pngPath;
+        }
+      } else {
+        resolvedPath = pngPath;
+      }
     }
 
     manifest.items[hash] = {
-      path: filePath,
+      path: resolvedPath,
       lastSeenAt: Date.now(),
       mime,
     };
 
     await writeManifest(manifest);
-    return filePath;
+    return resolvedPath;
   } catch {
     await writeManifest(manifest);
     return trimmed;

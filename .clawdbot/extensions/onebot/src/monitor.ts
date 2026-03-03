@@ -8,7 +8,6 @@ import type { PluginRuntime } from "clawdbot/plugin-sdk";
 import WebSocket from "ws";
 
 import type { ResolvedOneBotAccount } from "./accounts.js";
-import { resolveOneBotInboundImage } from "./media-cache.js";
 
 type ChannelLog = {
   info: (message: string) => void;
@@ -49,6 +48,44 @@ function resolveOneBotWsUrl(account: ResolvedOneBotAccount): string {
 
 function buildPairingIdLine(senderId: string) {
   return `Your QQ id: ${senderId}`;
+}
+
+type RecentMediaEntry = {
+  mediaTokens: string;
+  seenAt: number;
+};
+
+const recentMediaByPeer = new Map<string, RecentMediaEntry>();
+const RECENT_MEDIA_WINDOW_MS = 10_000;
+
+function extractImageTokens(text: string): string {
+  const matches = text.match(/\[image:[^\]]+\]/g);
+  return matches ? matches.join("") : "";
+}
+
+function maybeAttachRecentMedia(params: {
+  peerKey: string;
+  body: string;
+}): string {
+  const body = params.body;
+  const imageTokens = extractImageTokens(body);
+
+  if (imageTokens) {
+    recentMediaByPeer.set(params.peerKey, { mediaTokens: imageTokens, seenAt: Date.now() });
+    return body;
+  }
+
+  const recent = recentMediaByPeer.get(params.peerKey);
+  if (!recent) return body;
+  if (Date.now() - recent.seenAt > RECENT_MEDIA_WINDOW_MS) return body;
+
+  const trimmed = body.trim();
+  if (!trimmed) return body;
+
+  // Common QQ habit: send image, then immediately send a short "this" text.
+  if (trimmed.length > 30) return body;
+
+  return `${recent.mediaTokens}\n${body}`;
 }
 
 export async function monitorOneBotProvider(params: {
@@ -198,7 +235,9 @@ async function processInboundMessage(params: {
     message: evt.message ?? evt.raw_message ?? "",
     selfId,
   });
-  const rawBody = await rewriteInboundImageRefs(extracted.text);
+
+  const peerKey = isGroup ? `group:${groupId}:user:${senderId}` : `user:${senderId}`;
+  const rawBody = maybeAttachRecentMedia({ peerKey, body: extracted.text });
   if (!rawBody.trim()) return;
 
   const onebotCfg = (cfg.channels as Record<string, unknown> | undefined)?.onebot as
@@ -396,33 +435,6 @@ async function processInboundMessage(params: {
       },
     },
   });
-}
-
-async function rewriteInboundImageRefs(text: string): Promise<string> {
-  const regex = /\[image:([^\]]+)\]/g;
-  let cursor = 0;
-  let output = "";
-
-  for (const match of text.matchAll(regex)) {
-    const index = match.index ?? 0;
-    const whole = match[0] ?? "";
-    const rawRef = (match[1] ?? "").trim();
-
-    output += text.slice(cursor, index);
-    if (!rawRef) {
-      output += whole;
-      cursor = index + whole.length;
-      continue;
-    }
-
-    const resolved = await resolveOneBotInboundImage(rawRef);
-    output += `[image:${resolved}]`;
-    cursor = index + whole.length;
-  }
-
-  if (cursor === 0) return text;
-  output += text.slice(cursor);
-  return output;
 }
 
 function resolveSenderName(evt: OneBotMessageEvent): string | null {
