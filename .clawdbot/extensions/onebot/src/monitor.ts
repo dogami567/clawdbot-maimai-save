@@ -478,23 +478,31 @@ async function processInboundMessage(params: {
       logVerbose("onebot: drop group message (groupPolicy=disabled)");
       return;
     }
+    // Group allowlist policy:
+    // - If channels.onebot.groups is configured, use it as the allowlist for *group ids*.
+    //   In that mode we still buffer context from any sender, but only respond when mentioned.
+    //   Control commands remain gated by groupAllowFrom via commandAuthorized.
+    // - If groups config is not present, fall back to groupAllowFrom gating.
     if (groupPolicy === "allowlist") {
-      if (groupAllowFrom.length === 0) {
-        logVerbose("onebot: drop group message (groupPolicy=allowlist, no groupAllowFrom)");
-        return;
-      }
-      if (!senderAllowedForCommands) {
-        logVerbose(`onebot: drop group message (sender not allowed, user_id=${senderId})`);
-        return;
-      }
-    }
+      const groups = groupsCfg;
+      const hasGroupsConfig = Object.keys(groups).length > 0;
+      const groupAllowlistEnabled = hasGroupsConfig && !Object.hasOwn(groups, "*");
 
-    // Group allowlist by group id if groups config is present
-    const groups = groupsCfg;
-    const groupAllowlistEnabled = Object.keys(groups).length > 0 && !Object.hasOwn(groups, "*");
-    if (groupAllowlistEnabled && groupId && !Object.hasOwn(groups, groupId)) {
-      logVerbose(`onebot: drop group message (group not allowlisted, group_id=${groupId})`);
-      return;
+      if (groupAllowlistEnabled && groupId && !Object.hasOwn(groups, groupId)) {
+        logVerbose(`onebot: drop group message (group not allowlisted, group_id=${groupId})`);
+        return;
+      }
+
+      if (!hasGroupsConfig) {
+        if (groupAllowFrom.length === 0) {
+          logVerbose("onebot: drop group message (groupPolicy=allowlist, no groupAllowFrom)");
+          return;
+        }
+        if (!senderAllowedForCommands) {
+          logVerbose(`onebot: drop group message (sender not allowed, user_id=${senderId})`);
+          return;
+        }
+      }
     }
 
     const groupConfig = helpers.resolveGroupConfig(groupId ?? "");
