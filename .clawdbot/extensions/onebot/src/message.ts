@@ -11,9 +11,9 @@ function parseCqAt(segment: string): string | null {
   const match = segment.match(/^\[CQ:at,([^\]]+)\]$/i);
   if (!match) return null;
   const kv = match[1] ?? "";
-  const qqMatch = kv.match(/(?:^|,)qq=([^,\]]+)/i);
-  if (!qqMatch) return null;
-  return String(qqMatch[1] ?? "").trim() || null;
+  const idMatch = kv.match(/(?:^|,)(?:qq|id|uin)=([^,\]]+)/i);
+  if (!idMatch) return null;
+  return String(idMatch[1] ?? "").trim() || null;
 }
 
 function formatAt(qq: string): string {
@@ -94,9 +94,10 @@ export function extractOneBotTextAndMentions(params: {
 
   if (typeof params.message === "string") {
     const raw = params.message;
-    const hasAnyMention = /\[CQ:at,[^\]]+\]/i.test(raw);
+    const mentionSegments = [...raw.matchAll(/\[CQ:at,[^\]]+\]/gi)].map((m) => m[0]);
+    const hasAnyMention = mentionSegments.length > 0;
     const wasMentioned = selfId
-      ? new RegExp(`\\[CQ:at,[^\\]]*qq=${escapeRegExp(selfId)}[^\\]]*\\]`, "i").test(raw)
+      ? mentionSegments.some((seg) => parseCqAt(seg) === selfId)
       : false;
     return { text: stripCqCodes(raw), wasMentioned, hasAnyMention };
   }
@@ -115,12 +116,18 @@ export function extractOneBotTextAndMentions(params: {
         continue;
       }
       if (type === "at") {
-        const qq =
-          typeof data.qq === "string" || typeof data.qq === "number" ? String(data.qq) : "";
-        if (qq) {
+        const mentionId =
+          typeof data.qq === "string" || typeof data.qq === "number"
+            ? String(data.qq)
+            : typeof data.id === "string" || typeof data.id === "number"
+              ? String(data.id)
+              : typeof data.uin === "string" || typeof data.uin === "number"
+                ? String(data.uin)
+                : "";
+        if (mentionId) {
           hasAnyMention = true;
-          if (selfId && qq === selfId) wasMentioned = true;
-          parts.push(formatAt(qq));
+          if (selfId && mentionId === selfId) wasMentioned = true;
+          parts.push(formatAt(mentionId));
         }
         continue;
       }

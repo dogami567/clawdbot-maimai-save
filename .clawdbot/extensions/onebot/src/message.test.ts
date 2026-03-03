@@ -27,6 +27,26 @@ describe("onebot message parsing", () => {
     expect(parsed.text).toBe("hi @all world");
   });
 
+  it("detects cq at mentions that use id field", () => {
+    const parsed = extractOneBotTextAndMentions({
+      message: "[CQ:at,id=123] hello",
+      selfId: "123",
+    });
+    expect(parsed.wasMentioned).toBe(true);
+    expect(parsed.hasAnyMention).toBe(true);
+    expect(parsed.text).toBe("@123 hello");
+  });
+
+  it("detects segment at mentions that use id field", () => {
+    const parsed = extractOneBotTextAndMentions({
+      message: [{ type: "at", data: { id: 123 } }],
+      selfId: "123",
+    });
+    expect(parsed.wasMentioned).toBe(true);
+    expect(parsed.hasAnyMention).toBe(true);
+    expect(parsed.text).toBe("@123");
+  });
+
   it("uses fallback image fields from segment arrays", () => {
     const parsed = extractOneBotTextAndMentions({
       message: [{ type: "image", data: { file_id: 123456 } }],
