@@ -65,7 +65,7 @@ type RecentImageHashEntry = {
 };
 
 const recentImageHashesByPeer = new Map<string, Map<string, RecentImageHashEntry>>();
-const RECENT_IMAGE_DEDUPE_WINDOW_MS = 60_000;
+const RECENT_IMAGE_DEDUPE_WINDOW_MS = 5 * 60_000;
 
 function extractImageTokens(text: string): string {
   const matches = text.match(/\[image:[^\]]+\]/g);
