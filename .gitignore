@@ -1,0 +1,18 @@
+# Local assistant state
+memory/
+canvas/
+skills/
+AGENTS.md
+BOOTSTRAP.md
+HEARTBEAT.md
+IDENTITY.md
+MEMORY.md
+SOUL.md
+TOOLS.md
+USER.md
+
+# Clawdbot runtime data
+.clawdbot/data/
+
+# Extension install artifacts
+.clawdbot/extensions/**/node_modules/

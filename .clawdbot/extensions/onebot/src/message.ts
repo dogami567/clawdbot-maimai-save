@@ -1,0 +1,161 @@
+type OneBotMessageSegment = {
+  type?: string;
+  data?: Record<string, unknown>;
+};
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseCqAt(segment: string): string | null {
+  const match = segment.match(/^\[CQ:at,([^\]]+)\]$/i);
+  if (!match) return null;
+  const kv = match[1] ?? "";
+  const qqMatch = kv.match(/(?:^|,)qq=([^,\]]+)/i);
+  if (!qqMatch) return null;
+  return String(qqMatch[1] ?? "").trim() || null;
+}
+
+function formatAt(qq: string): string {
+  return qq.toLowerCase() === "all" ? "@all" : `@${qq}`;
+}
+
+function parseCqField(segment: string, key: string): string | null {
+  // `segment` here is the inside of `[CQ:type,...]` without the trailing `]`,
+  // so we only need to stop at the next comma.
+  const match = segment.match(new RegExp(`(?:^|,)${key}=([^,]+)`, "i"));
+  if (!match) return null;
+  const value = String(match[1] ?? "").trim();
+  return value || null;
+}
+
+function formatCqMedia(type: string, segment: string): string {
+  const url = parseCqField(segment, "url") ?? "";
+  const file = parseCqField(segment, "file") ?? "";
+  const mediaRef = url || file;
+
+  if (type === "image") return mediaRef ? `[image:${mediaRef}]` : "[image]";
+  if (type === "record") return mediaRef ? `[voice:${mediaRef}]` : "[voice]";
+  if (type === "video") return mediaRef ? `[video:${mediaRef}]` : "[video]";
+  if (type === "file") return mediaRef ? `[file:${mediaRef}]` : "[file]";
+
+  // QQ stickers (mface/marketface) are typically images; if we have a url/file, treat them as images.
+  if (type === "mface" || type === "marketface") {
+    return mediaRef ? `[image:${mediaRef}]` : "[sticker]";
+  }
+
+  // Built-in emoji (face) usually doesn't provide a stable media URL.
+  if (type === "face") return "[emoji]";
+
+  return "[media]";
+}
+
+function stripCqCodes(input: string): string {
+  return input
+    .replace(/\[CQ:at,[^\]]+\]/gi, (seg) => {
+      const qq = parseCqAt(seg);
+      return qq ? formatAt(qq) : "";
+    })
+    .replace(/\[CQ:([^,\]]+),([^\]]*)\]/gi, (_all, rawType, rawSeg) => {
+      const type = String(rawType ?? "").toLowerCase();
+      const seg = String(rawSeg ?? "");
+      if (type === "at") return "";
+      return formatCqMedia(type, seg);
+    })
+    .replace(/\s+\n/g, "\n")
+    .trim();
+}
+
+export function extractOneBotTextAndMentions(params: {
+  message: unknown;
+  selfId?: string | null;
+}): { text: string; wasMentioned: boolean; hasAnyMention: boolean } {
+  const selfId = params.selfId?.trim() || undefined;
+
+  if (typeof params.message === "string") {
+    const raw = params.message;
+    const hasAnyMention = /\[CQ:at,[^\]]+\]/i.test(raw);
+    const wasMentioned = selfId
+      ? new RegExp(`\\[CQ:at,[^\\]]*qq=${escapeRegExp(selfId)}[^\\]]*\\]`, "i").test(raw)
+      : false;
+    return { text: stripCqCodes(raw), wasMentioned, hasAnyMention };
+  }
+
+  if (Array.isArray(params.message)) {
+    const parts: string[] = [];
+    let hasAnyMention = false;
+    let wasMentioned = false;
+    for (const entry of params.message) {
+      const seg = entry as OneBotMessageSegment;
+      const type = String(seg.type ?? "").trim().toLowerCase();
+      const data = seg.data ?? {};
+      if (type === "text") {
+        const text = typeof data.text === "string" ? data.text : "";
+        if (text) parts.push(text);
+        continue;
+      }
+      if (type === "at") {
+        const qq =
+          typeof data.qq === "string" || typeof data.qq === "number" ? String(data.qq) : "";
+        if (qq) {
+          hasAnyMention = true;
+          if (selfId && qq === selfId) wasMentioned = true;
+          parts.push(formatAt(qq));
+        }
+        continue;
+      }
+      if (["image", "record", "video", "file", "face", "mface", "marketface"].includes(type)) {
+        const mediaRef =
+          typeof data.url === "string"
+            ? data.url
+            : typeof data.file === "string"
+              ? data.file
+              : "";
+        if (type === "image") parts.push(mediaRef ? `[image:${mediaRef}]` : "[image]");
+        else if (type === "record") parts.push(mediaRef ? `[voice:${mediaRef}]` : "[voice]");
+        else if (type === "video") parts.push(mediaRef ? `[video:${mediaRef}]` : "[video]");
+        else if (type === "file") parts.push(mediaRef ? `[file:${mediaRef}]` : "[file]");
+        else if (type === "mface" || type === "marketface") {
+          parts.push(mediaRef ? `[image:${mediaRef}]` : "[sticker]");
+        } else if (type === "face") {
+          parts.push("[emoji]");
+        }
+        continue;
+      }
+    }
+    return { text: parts.join("").trim(), wasMentioned, hasAnyMention };
+  }
+
+  return { text: "", wasMentioned: false, hasAnyMention: false };
+}
+
+export type NormalizedOneBotTarget =
+  | { kind: "user"; id: string }
+  | { kind: "group"; id: string };
+
+export function normalizeOneBotTarget(raw: string): NormalizedOneBotTarget | undefined {
+  let normalized = raw.trim();
+  if (!normalized) return undefined;
+
+  const lowered = normalized.toLowerCase();
+  for (const prefix of ["onebot:", "qq:", "napcat:"]) {
+    if (lowered.startsWith(prefix)) {
+      normalized = normalized.slice(prefix.length).trim();
+      break;
+    }
+  }
+
+  const cleaned = normalized.replace(/^(to|chat):/i, "").trim();
+  const userMatch = cleaned.match(/^(user|private|dm):(.+)$/i);
+  if (userMatch) {
+    const id = (userMatch[2] ?? "").trim();
+    return id ? { kind: "user", id } : undefined;
+  }
+  const groupMatch = cleaned.match(/^group:(.+)$/i);
+  if (groupMatch) {
+    const id = (groupMatch[1] ?? "").trim();
+    return id ? { kind: "group", id } : undefined;
+  }
+  return undefined;
+}
+

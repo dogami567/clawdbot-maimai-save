@@ -8,6 +8,7 @@ import type { PluginRuntime } from "clawdbot/plugin-sdk";
 import WebSocket from "ws";
 
 import type { ResolvedOneBotAccount } from "./accounts.js";
+import { resolveOneBotInboundImage } from "./media-cache.js";
 
 type ChannelLog = {
   info: (message: string) => void;
@@ -86,6 +87,32 @@ function maybeAttachRecentMedia(params: {
   if (trimmed.length > 30) return body;
 
   return `${recent.mediaTokens}\n${body}`;
+}
+
+async function rewriteInboundImageRefs(text: string): Promise<string> {
+  if (!text.includes("[image:")) return text;
+
+  const matches = [...text.matchAll(/\[image:([^\]]+)\]/g)];
+  if (matches.length === 0) return text;
+
+  const uniqueRefs = Array.from(
+    new Set(matches.map((m) => String(m[1] ?? "")).map((ref) => ref.trim()).filter(Boolean))
+  );
+
+  const resolvedPairs = await Promise.all(
+    uniqueRefs.map(async (ref) => {
+      const resolved = await resolveOneBotInboundImage(ref);
+      return [ref, resolved] as const;
+    })
+  );
+
+  const resolvedByRef = new Map<string, string>(resolvedPairs);
+
+  return text.replace(/\[image:([^\]]+)\]/g, (full, rawRef) => {
+    const key = String(rawRef ?? "").trim();
+    const resolved = resolvedByRef.get(key);
+    return resolved ? `[image:${resolved}]` : full;
+  });
 }
 
 export async function monitorOneBotProvider(params: {
@@ -237,8 +264,14 @@ async function processInboundMessage(params: {
   });
 
   const peerKey = isGroup ? `group:${groupId}:user:${senderId}` : `user:${senderId}`;
-  const rawBody = maybeAttachRecentMedia({ peerKey, body: extracted.text });
+  let rawBody = maybeAttachRecentMedia({ peerKey, body: extracted.text });
   if (!rawBody.trim()) return;
+
+  try {
+    rawBody = await rewriteInboundImageRefs(rawBody);
+  } catch {
+    // Non-fatal: keep original refs if caching fails.
+  }
 
   const onebotCfg = (cfg.channels as Record<string, unknown> | undefined)?.onebot as
     | {
