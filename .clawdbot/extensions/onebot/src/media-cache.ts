@@ -140,6 +140,11 @@ export async function resolveOneBotInboundImage(ref: string): Promise<string> {
       method: "GET",
       redirect: "follow",
       signal: AbortSignal.timeout(20_000),
+      headers: {
+        // Some QQ CDN endpoints can be picky; a basic UA + accept improves success rate.
+        "user-agent": "Mozilla/5.0 (compatible; Clawdbot-OneBot/1.0)",
+        accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
     });
     if (!response.ok) {
       await writeManifest(manifest);
