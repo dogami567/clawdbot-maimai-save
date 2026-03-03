@@ -82,7 +82,7 @@ const RECENT_GROUP_CONTEXT_WINDOW_MS = 5 * 60_000;
 const RECENT_GROUP_CONTEXT_ATTACH_LIMIT = 10;
 
 function extractImageTokens(text: string): string {
-  const matches = text.match(/\[image(?::[^\]]+)?\]/g);
+  const matches = text.match(/\[(?:image(?::[^\]]+)?|sticker)\]/g);
   return matches ? matches.join("") : "";
 }
 

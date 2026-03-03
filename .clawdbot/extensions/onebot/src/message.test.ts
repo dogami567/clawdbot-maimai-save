@@ -42,5 +42,21 @@ describe("onebot message parsing", () => {
     });
     expect(parsed.text).toBe("[image:abc123]");
   });
+
+  it("falls back for unknown cq media segment types", () => {
+    const parsed = extractOneBotTextAndMentions({
+      message: "[CQ:custom_sticker,path=foo.png]",
+      selfId: "999",
+    });
+    expect(parsed.text).toBe("[image:foo.png]");
+  });
+
+  it("falls back for unknown segment types", () => {
+    const parsed = extractOneBotTextAndMentions({
+      message: [{ type: "custom", data: { id: "xyz" } }],
+      selfId: "999",
+    });
+    expect(parsed.text).toBe("[image:xyz]");
+  });
 });
 

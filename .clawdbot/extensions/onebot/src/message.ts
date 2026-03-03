@@ -64,6 +64,9 @@ function formatCqMedia(type: string, segment: string): string {
   // Built-in emoji (face) usually doesn't provide a stable media URL.
   if (type === "face") return "[emoji]";
 
+  // Some bridges use non-standard CQ types with regular media fields.
+  if (mediaRef) return `[image:${mediaRef}]`;
+
   return "[media]";
 }
 
@@ -132,6 +135,13 @@ export function extractOneBotTextAndMentions(params: {
         } else if (type === "face") {
           parts.push("[emoji]");
         }
+        continue;
+      }
+
+      // Fallback for non-standard segment types carrying regular media fields.
+      const fallbackMediaRef = resolveSegmentMediaRef(data);
+      if (fallbackMediaRef) {
+        parts.push(`[image:${fallbackMediaRef}]`);
         continue;
       }
     }
