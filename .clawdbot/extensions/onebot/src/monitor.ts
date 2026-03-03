@@ -59,6 +59,14 @@ type RecentMediaEntry = {
 const recentMediaByPeer = new Map<string, RecentMediaEntry>();
 const RECENT_MEDIA_WINDOW_MS = 10_000;
 
+type RecentImageHashEntry = {
+  seenAt: number;
+  count: number;
+};
+
+const recentImageHashesByPeer = new Map<string, Map<string, RecentImageHashEntry>>();
+const RECENT_IMAGE_DEDUPE_WINDOW_MS = 60_000;
+
 function extractImageTokens(text: string): string {
   const matches = text.match(/\[image:[^\]]+\]/g);
   return matches ? matches.join("") : "";
@@ -113,6 +121,61 @@ async function rewriteInboundImageRefs(text: string): Promise<string> {
     const resolved = resolvedByRef.get(key);
     return resolved ? `[image:${resolved}]` : full;
   });
+}
+
+function maybeDedupeRecentImages(params: { peerKey: string; body: string }): string {
+  const body = params.body;
+  if (!body.includes("[image:")) return body;
+
+  const matches = [...body.matchAll(/\[image:([^\]]+)\]/g)];
+  if (matches.length === 0) return body;
+
+  const now = Date.now();
+  const map = recentImageHashesByPeer.get(params.peerKey) ?? new Map();
+
+  // Cleanup old entries
+  for (const [hash, entry] of map.entries()) {
+    if (now - entry.seenAt > RECENT_IMAGE_DEDUPE_WINDOW_MS) {
+      map.delete(hash);
+    }
+  }
+
+  const isSha256Hex = (value: string) => /^[a-f0-9]{64}$/i.test(value);
+
+  let changed = false;
+  let out = body;
+
+  for (const m of matches) {
+    const ref = String(m[1] ?? "").trim();
+    if (!ref) continue;
+
+    // After rewriteInboundImageRefs, inbound images are usually local paths in
+    // `.clawdbot/data/onebot-media/<sha256>.<ext>`.
+    const base = ref.split(/[\\/]/).pop() ?? "";
+    const dot = base.lastIndexOf(".");
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    if (!isSha256Hex(stem)) continue;
+
+    const existing = map.get(stem);
+    if (!existing) {
+      map.set(stem, { seenAt: now, count: 1 });
+      continue;
+    }
+
+    existing.seenAt = now;
+    existing.count += 1;
+
+    const short = stem.slice(0, 8);
+    const placeholder = `[image:repeat:${short} x${existing.count}]`;
+    const token = `[image:${ref}]`;
+    if (out.includes(token)) {
+      out = out.replaceAll(token, placeholder);
+      changed = true;
+    }
+  }
+
+  if (map.size > 0) recentImageHashesByPeer.set(params.peerKey, map);
+  return changed ? out : body;
 }
 
 export async function monitorOneBotProvider(params: {
@@ -272,6 +335,11 @@ async function processInboundMessage(params: {
   } catch {
     // Non-fatal: keep original refs if caching fails.
   }
+
+  // Token saver: if the same image gets spammed repeatedly by the same peer,
+  // keep the first occurrence as an image and turn subsequent repeats into a
+  // lightweight text placeholder.
+  rawBody = maybeDedupeRecentImages({ peerKey, body: rawBody });
 
   const onebotCfg = (cfg.channels as Record<string, unknown> | undefined)?.onebot as
     | {
