@@ -447,16 +447,22 @@ async function processInboundMessage(params: {
 
   const senderName = resolveSenderName(evt) || `user:${senderId}`;
 
-  // Group context buffer: keep recent messages so a later @ mention can bring some
-  // immediate prior context (and allow commands like "use the image above").
+  const groupsCfg = (onebotCfg?.groups ?? {}) as Record<string, unknown>;
+  const groupContextEnabled =
+    isGroup &&
+    groupId &&
+    Object.keys(groupsCfg).length > 0 &&
+    (Object.hasOwn(groupsCfg, "*") || Object.hasOwn(groupsCfg, groupId));
+
+  // Group context buffer: only keep recent messages for allowlisted groups.
   const groupContextPrefix =
-    isGroup && groupId
-      ? buildRecentGroupContextPrefix({ groupId, limit: RECENT_GROUP_CONTEXT_ATTACH_LIMIT })
+    groupContextEnabled && extracted.wasMentioned
+      ? buildRecentGroupContextPrefix({ groupId: groupId!, limit: RECENT_GROUP_CONTEXT_ATTACH_LIMIT })
       : "";
 
-  if (isGroup && groupId) {
+  if (groupContextEnabled) {
     recordRecentGroupMessage({
-      groupId,
+      groupId: groupId!,
       senderId,
       senderName,
       body: rawBody,
@@ -484,7 +490,7 @@ async function processInboundMessage(params: {
     }
 
     // Group allowlist by group id if groups config is present
-    const groups = (onebotCfg?.groups ?? {}) as Record<string, unknown>;
+    const groups = groupsCfg;
     const groupAllowlistEnabled = Object.keys(groups).length > 0 && !Object.hasOwn(groups, "*");
     if (groupAllowlistEnabled && groupId && !Object.hasOwn(groups, groupId)) {
       logVerbose(`onebot: drop group message (group not allowlisted, group_id=${groupId})`);
