@@ -67,6 +67,19 @@ type RecentImageHashEntry = {
 const recentImageHashesByPeer = new Map<string, Map<string, RecentImageHashEntry>>();
 const RECENT_IMAGE_DEDUPE_WINDOW_MS = 5 * 60_000;
 
+type RecentGroupEntry = {
+  at: number;
+  senderId: string;
+  senderName: string;
+  body: string;
+  fullBody: string;
+};
+
+const recentGroupContext = new Map<string, RecentGroupEntry[]>();
+const RECENT_GROUP_CONTEXT_MAX = 50;
+const RECENT_GROUP_CONTEXT_WINDOW_MS = 5 * 60_000;
+const RECENT_GROUP_CONTEXT_ATTACH_LIMIT = 10;
+
 function extractImageTokens(text: string): string {
   const matches = text.match(/\[image:[^\]]+\]/g);
   return matches ? matches.join("") : "";
@@ -121,6 +134,56 @@ async function rewriteInboundImageRefs(text: string): Promise<string> {
     const resolved = resolvedByRef.get(key);
     return resolved ? `[image:${resolved}]` : full;
   });
+}
+
+function recordRecentGroupMessage(params: {
+  groupId: string;
+  senderId: string;
+  senderName: string;
+  body: string;
+  fullBody: string;
+}): void {
+  const now = Date.now();
+  const list = recentGroupContext.get(params.groupId) ?? [];
+
+  // Drop stale entries
+  const fresh = list.filter((entry) => now - entry.at <= RECENT_GROUP_CONTEXT_WINDOW_MS);
+
+  fresh.push({
+    at: now,
+    senderId: params.senderId,
+    senderName: params.senderName,
+    body: params.body,
+    fullBody: params.fullBody,
+  });
+
+  while (fresh.length > RECENT_GROUP_CONTEXT_MAX) fresh.shift();
+  recentGroupContext.set(params.groupId, fresh);
+}
+
+function buildRecentGroupContextPrefix(params: {
+  groupId: string;
+  excludeSenderId?: string;
+  limit?: number;
+}): string {
+  const list = recentGroupContext.get(params.groupId) ?? [];
+  if (list.length === 0) return "";
+
+  const limit = Math.max(0, Math.min(params.limit ?? RECENT_GROUP_CONTEXT_ATTACH_LIMIT, 50));
+  if (limit === 0) return "";
+
+  const now = Date.now();
+  const filtered = list
+    .filter((entry) => now - entry.at <= RECENT_GROUP_CONTEXT_WINDOW_MS)
+    .filter((entry) => (params.excludeSenderId ? entry.senderId !== params.excludeSenderId : true));
+
+  const slice = filtered.slice(-limit);
+  if (slice.length === 0) return "";
+
+  const lines = slice.map((entry) => `${entry.senderName}: ${entry.body}`.trim()).filter(Boolean);
+  if (lines.length === 0) return "";
+
+  return `Recent group context (last ${lines.length} msgs):\n${lines.join("\n")}\n\n`;
 }
 
 function maybeDedupeRecentImages(params: { peerKey: string; body: string }): string {
@@ -336,6 +399,8 @@ async function processInboundMessage(params: {
     // Non-fatal: keep original refs if caching fails.
   }
 
+  const fullBody = rawBody;
+
   // Token saver: if the same image gets spammed repeatedly by the same peer,
   // keep the first occurrence as an image and turn subsequent repeats into a
   // lightweight text placeholder.
@@ -379,6 +444,25 @@ async function processInboundMessage(params: {
         ],
       })
     : undefined;
+
+  const senderName = resolveSenderName(evt) || `user:${senderId}`;
+
+  // Group context buffer: keep recent messages so a later @ mention can bring some
+  // immediate prior context (and allow commands like "use the image above").
+  const groupContextPrefix =
+    isGroup && groupId
+      ? buildRecentGroupContextPrefix({ groupId, limit: RECENT_GROUP_CONTEXT_ATTACH_LIMIT })
+      : "";
+
+  if (isGroup && groupId) {
+    recordRecentGroupMessage({
+      groupId,
+      senderId,
+      senderName,
+      body: rawBody,
+      fullBody,
+    });
+  }
 
   if (isGroup) {
     const defaultGroupPolicy = cfg.channels?.defaults?.groupPolicy;
@@ -481,14 +565,13 @@ async function processInboundMessage(params: {
     agentId: route.agentId,
   });
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(cfg);
-  const senderName = resolveSenderName(evt) || `user:${senderId}`;
   const groupLabel = groupId ? `group:${groupId}` : undefined;
   const body = core.channel.reply.formatAgentEnvelope({
     channel: "OneBot",
     from: senderName,
     timestamp: evt.time ? evt.time * 1000 : Date.now(),
     envelope: envelopeOptions,
-    body: rawBody,
+    body: groupContextPrefix ? `${groupContextPrefix}${rawBody}` : rawBody,
   });
 
   const ctxPayload = core.channel.reply.finalizeInboundContext({
