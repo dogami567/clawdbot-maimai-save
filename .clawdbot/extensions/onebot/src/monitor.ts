@@ -58,7 +58,7 @@ type RecentMediaEntry = {
 };
 
 const recentMediaByPeer = new Map<string, RecentMediaEntry>();
-const RECENT_MEDIA_WINDOW_MS = 10_000;
+const RECENT_MEDIA_WINDOW_MS = 180_000;
 
 type RecentImageHashEntry = {
   seenAt: number;
