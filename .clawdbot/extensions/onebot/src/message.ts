@@ -29,10 +29,27 @@ function parseCqField(segment: string, key: string): string | null {
   return value || null;
 }
 
+function resolveCqMediaRef(segment: string): string {
+  const candidates = ["url", "file", "path", "file_id", "id", "fid"];
+  for (const key of candidates) {
+    const value = parseCqField(segment, key);
+    if (value) return value;
+  }
+  return "";
+}
+
+function resolveSegmentMediaRef(data: Record<string, unknown>): string {
+  const candidates = ["url", "file", "path", "file_id", "id", "fid"];
+  for (const key of candidates) {
+    const raw = data[key];
+    if (typeof raw === "string" && raw.trim()) return raw.trim();
+    if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  }
+  return "";
+}
+
 function formatCqMedia(type: string, segment: string): string {
-  const url = parseCqField(segment, "url") ?? "";
-  const file = parseCqField(segment, "file") ?? "";
-  const mediaRef = url || file;
+  const mediaRef = resolveCqMediaRef(segment);
 
   if (type === "image") return mediaRef ? `[image:${mediaRef}]` : "[image]";
   if (type === "record") return mediaRef ? `[voice:${mediaRef}]` : "[voice]";
@@ -105,12 +122,7 @@ export function extractOneBotTextAndMentions(params: {
         continue;
       }
       if (["image", "record", "video", "file", "face", "mface", "marketface"].includes(type)) {
-        const mediaRef =
-          typeof data.url === "string"
-            ? data.url
-            : typeof data.file === "string"
-              ? data.file
-              : "";
+        const mediaRef = resolveSegmentMediaRef(data);
         if (type === "image") parts.push(mediaRef ? `[image:${mediaRef}]` : "[image]");
         else if (type === "record") parts.push(mediaRef ? `[voice:${mediaRef}]` : "[voice]");
         else if (type === "video") parts.push(mediaRef ? `[video:${mediaRef}]` : "[video]");

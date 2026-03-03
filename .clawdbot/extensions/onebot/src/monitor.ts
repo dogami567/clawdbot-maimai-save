@@ -82,7 +82,7 @@ const RECENT_GROUP_CONTEXT_WINDOW_MS = 5 * 60_000;
 const RECENT_GROUP_CONTEXT_ATTACH_LIMIT = 10;
 
 function extractImageTokens(text: string): string {
-  const matches = text.match(/\[image:[^\]]+\]/g);
+  const matches = text.match(/\[image(?::[^\]]+)?\]/g);
   return matches ? matches.join("") : "";
 }
 
@@ -423,6 +423,14 @@ async function processInboundMessage(params: {
     });
   } catch {
     // Non-fatal: keep original refs if caching fails.
+  }
+
+  if (rawBody.includes("[image]") && !rawBody.includes("[image:")) {
+    try {
+      logVerbose(`onebot: unresolved image segment message_id=${String(evt.message_id ?? "")} payload=${JSON.stringify(evt.message ?? evt.raw_message ?? "")}`);
+    } catch {
+      // ignore logging serialization errors
+    }
   }
 
   const fullBody = rawBody;
