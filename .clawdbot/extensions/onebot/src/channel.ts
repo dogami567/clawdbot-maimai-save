@@ -343,7 +343,30 @@ export const onebotPlugin: ChannelPlugin<ResolvedOneBotAccount> = {
             channel: "onebot",
             accountId: account.accountId,
           });
-          const normalizedText = core.channel.text.convertMarkdownTables(text, tableMode);
+          let normalizedText = core.channel.text.convertMarkdownTables(text, tableMode);
+
+          // If the model replies with Clawdbot image tokens like `[image:/path/to.png]`,
+          // convert them into CQ segments. This keeps group + DM media behavior consistent
+          // even when the reply dispatcher doesn't surface `mediaUrl` separately.
+          const imageMatches = [...normalizedText.matchAll(/\[image:([^\]]+)\]/g)];
+          for (const match of imageMatches) {
+            const ref = String(match[1] ?? "").trim();
+            if (!ref) continue;
+            if (/^repeat:/i.test(ref)) continue;
+            if (/^https?:\/\//i.test(ref)) continue;
+            if (/^base64:\/\//i.test(ref)) {
+              normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${ref}]`);
+              continue;
+            }
+            try {
+              const data = await fs.readFile(ref);
+              const fileRef = `base64://${data.toString("base64")}`;
+              normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${fileRef}]`);
+            } catch {
+              // If we can't read it, keep original token.
+            }
+          }
+
           const res = await sendOneBotText({ account, target, text: normalizedText });
           statusSink({ lastOutboundAt: Date.now() });
           return res;
