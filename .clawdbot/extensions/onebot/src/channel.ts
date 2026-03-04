@@ -353,8 +353,7 @@ export const onebotPlugin: ChannelPlugin<ResolvedOneBotAccount> = {
             const ref = String(match[1] ?? "").trim();
             if (!ref) continue;
             if (/^repeat:/i.test(ref)) continue;
-            if (/^https?:\/\//i.test(ref)) continue;
-            if (/^base64:\/\//i.test(ref)) {
+            if (/^https?:\/\//i.test(ref) || /^base64:\/\//i.test(ref)) {
               normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${ref}]`);
               continue;
             }
@@ -364,6 +363,26 @@ export const onebotPlugin: ChannelPlugin<ResolvedOneBotAccount> = {
               normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${fileRef}]`);
             } catch {
               // If we can't read it, keep original token.
+            }
+          }
+
+          // Also support markdown image syntax from model/tool outputs.
+          const markdownImageMatches = [...normalizedText.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)];
+          for (const match of markdownImageMatches) {
+            const ref = String(match[1] ?? "").trim();
+            if (!ref) continue;
+
+            if (/^https?:\/\//i.test(ref) || /^base64:\/\//i.test(ref)) {
+              normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${ref}]`);
+              continue;
+            }
+
+            try {
+              const data = await fs.readFile(ref);
+              const fileRef = `base64://${data.toString("base64")}`;
+              normalizedText = normalizedText.replaceAll(match[0], `[CQ:image,file=${fileRef}]`);
+            } catch {
+              // If we can't read it, keep original markdown image.
             }
           }
 
