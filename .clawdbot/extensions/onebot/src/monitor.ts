@@ -273,6 +273,11 @@ export async function monitorOneBotProvider(params: {
     selfId?: string | null;
   }) => { text: string; wasMentioned: boolean; hasAnyMention: boolean };
   sendText: (params: { target: string; text: string }) => Promise<{ messageId?: string }>;
+  sendMedia: (params: {
+    target: string;
+    text?: string;
+    mediaUrl: string;
+  }) => Promise<{ messageId?: string }>;
 }): Promise<void> {
   const { account, cfg, core, runtime, abortSignal, statusSink } = params;
 
@@ -388,6 +393,11 @@ async function processInboundMessage(params: {
       selfId?: string | null;
     }) => { text: string; wasMentioned: boolean; hasAnyMention: boolean };
     sendText: (params: { target: string; text: string }) => Promise<{ messageId?: string }>;
+    sendMedia: (params: {
+      target: string;
+      text?: string;
+      mediaUrl: string;
+    }) => Promise<{ messageId?: string }>;
   };
 }): Promise<void> {
   const { evt, account, cfg, core, runtime, logVerbose, statusSink, helpers } = params;
@@ -659,9 +669,20 @@ async function processInboundMessage(params: {
     cfg,
     dispatcherOptions: {
       deliver: async (payload: ReplyPayload) => {
+        const target = isGroup ? `group:${groupId}` : `user:${senderId}`;
+        const mediaUrl = typeof (payload as { mediaUrl?: unknown }).mediaUrl === "string"
+          ? String((payload as { mediaUrl?: string }).mediaUrl)
+          : "";
+
+        if (mediaUrl.trim()) {
+          const text = typeof payload.text === "string" ? payload.text : undefined;
+          await helpers.sendMedia({ target, text, mediaUrl });
+          statusSink?.({ lastOutboundAt: Date.now() });
+          return;
+        }
+
         const text = payload.text ?? "";
         if (!text.trim()) return;
-        const target = isGroup ? `group:${groupId}` : `user:${senderId}`;
         await helpers.sendText({ target, text });
         statusSink?.({ lastOutboundAt: Date.now() });
       },

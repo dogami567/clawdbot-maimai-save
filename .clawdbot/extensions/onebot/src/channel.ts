@@ -348,6 +348,26 @@ export const onebotPlugin: ChannelPlugin<ResolvedOneBotAccount> = {
           statusSink({ lastOutboundAt: Date.now() });
           return res;
         },
+        sendMedia: async ({ target, text, mediaUrl }) => {
+          const cleanedText = text?.trim() ?? "";
+          const cleanedMedia = mediaUrl?.trim() ?? "";
+
+          let fileRef = cleanedMedia;
+          if (fileRef && !/^https?:\/\//i.test(fileRef) && !/^base64:\/\//i.test(fileRef)) {
+            try {
+              const data = await fs.readFile(fileRef);
+              fileRef = `base64://${data.toString("base64")}`;
+            } catch {
+              fileRef = cleanedMedia;
+            }
+          }
+
+          const cqImage = fileRef ? `[CQ:image,file=${fileRef}]` : "";
+          const combined = [cleanedText, cqImage].filter(Boolean).join("\n");
+          const res = await sendOneBotText({ account, target, text: combined || cleanedText });
+          statusSink({ lastOutboundAt: Date.now() });
+          return res;
+        },
       });
     },
   },
