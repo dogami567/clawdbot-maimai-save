@@ -1,7 +1,7 @@
 # Local assistant state
 memory/
 canvas/
-skills/
+# skills/ is part of the repo; do not ignore it.
 AGENTS.md
 BOOTSTRAP.md
 HEARTBEAT.md
