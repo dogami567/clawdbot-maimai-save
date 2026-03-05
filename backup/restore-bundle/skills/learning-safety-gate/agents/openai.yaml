@@ -1,0 +1,3 @@
+interface:
+  display_name: "Learning Safety Gate"
+  short_description: "Enforce malware-first safety checks before learning external content"

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$#" -lt 1 ]; then
+  echo "Usage: scripts/search <query> [--research|--text|--providers exa,brave,perplexity]" >&2
+  exit 1
+fi
+
+mode="auto"
+content="highlights"
+providers="exa,brave,perplexity"
+
+args=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --research)
+      mode="research"
+      shift
+      ;;
+    --text)
+      content="text"
+      shift
+      ;;
+    --providers)
+      providers="${2:-$providers}"
+      shift 2
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+query="${args[*]}"
+python3 /home/node/clawd/skills/exa-search-router/scripts/search_router.py \
+  "$query" \
+  --providers "$providers" \
+  --exa-mode "$mode" \
+  --exa-content "$content"

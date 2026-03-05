@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mewgenics AI Lab"
+  short_description: "Track RE findings and AI automation tasks for Mewgenics"
+  default_prompt: "Use $mewgenics-ai-lab to update the tracker and execute the next reverse-engineering or automation step."

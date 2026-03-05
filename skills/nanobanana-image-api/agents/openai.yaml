@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nano Banana Image API"
+  short_description: "Generate and edit images via Nano Banana and Gemini API"
+  default_prompt: "Use this skill to run AI self-loop image generation: write prompt, generate one round, inspect image result, revise prompt, and iterate until goal is met; always save outputs and return file paths."

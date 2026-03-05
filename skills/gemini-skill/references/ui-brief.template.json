@@ -1,0 +1,60 @@
+{
+  "project": {
+    "projectDir": "D:/path/to/project",
+    "framework": "nextjs-app-router",
+    "language": "tsx",
+    "styling": "tailwind"
+  },
+  "pages": [
+    {
+      "route": "/",
+      "purpose": "Landing / 输入页",
+      "requiresAuthToSubmit": true
+    },
+    {
+      "route": "/app",
+      "purpose": "Dashboard / 侧栏：历史、充值、说明",
+      "requiresAuth": true
+    }
+  ],
+  "ui": {
+    "theme": "dark_tech",
+    "accentColor": "#00E5FF",
+    "animationLevel": "high",
+    "notes": "允许 Gemini 自由发挥，但不要引入大量新依赖"
+  },
+  "interactionRules": {
+    "unauthenticated": "allow_input_but_prompt_login_on_submit",
+    "fileUpload": {
+      "enabled": true,
+      "types": ["txt", "docx", "pdf", "image/*"],
+      "maxSizeMB": 20
+    },
+    "history": {
+      "retentionDays": 7,
+      "deletable": true,
+      "model": "one_submit_one_report"
+    },
+    "billing": {
+      "mode": "credits",
+      "consumePerReport": 1
+    },
+    "export": {
+      "format": "docx",
+      "source": "markdown_placeholder"
+    }
+  },
+  "constraints": {
+    "doNotTouch": [
+      "payments/webhook logic unless requested",
+      "database schema unless requested",
+      "auth flow unless requested"
+    ],
+    "preferred": [
+      "reuse existing components",
+      "keep changes small and reviewable",
+      "TypeScript strict; fix build errors"
+    ]
+  }
+}
+

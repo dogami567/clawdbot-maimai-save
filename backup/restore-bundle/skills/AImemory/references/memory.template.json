@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "updatedAt": "",
+  "principles": [
+    "Prefer minimal user busywork: ask for required inputs in one batch, then execute end-to-end."
+  ],
+  "defaults": {
+    "stack": "",
+    "framework": "",
+    "language": ""
+  },
+  "preferences": {
+    "collaboration": [],
+    "uiUx": [],
+    "engineering": []
+  },
+  "sop": [],
+  "pitfalls": [],
+  "notes": [
+    "Never store secrets (tokens/keys/passwords) in this file."
+  ]
+}
+

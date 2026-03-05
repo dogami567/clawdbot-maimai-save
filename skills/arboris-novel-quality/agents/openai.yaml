@@ -1,0 +1,4 @@
+interface:
+  display_name: "Arboris Novel Quality"
+  short_description: "Onboard + diagnose Arboris novel generation quality"
+  default_prompt: "Load this skill, summarize the current AI injection pipeline (prompts/context/style), then triage outline/chapter quality issues by asking for: model used, a bad chapter excerpt, its outline summary, and (if available) context_preview_chapter.json."
