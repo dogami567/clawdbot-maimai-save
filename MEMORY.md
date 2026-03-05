@@ -50,3 +50,5 @@
 - Disaster-recovery rule: persist critical assistant memory/config/skills updates to remote backup repo so Clawdbot can be restored after container data loss.
 - Codex result retrieval fallback (mandatory): if webhook/system notification lacks concrete outcome details, read `/home/node/codex-jobs/<jobId>/last_message.txt` (and `stdout.txt`/`stderr.txt` when needed) directly from this container before replying; do not dispatch a second Codex job just to read its own artifacts.
 - Disaster-recovery rule: persist critical assistant memory/config/skills updates to remote backup repo so Clawdbot can be restored after container data loss.
+- Backup remote in use: `https://github.com/dogami567/clawdbot-maimai-save.git` (`maimai-save`), with daily automated backup and push.
+- Backup policy: include restore-critical files (memory/skills/scripts/extensions) and sanitized config only; never upload live secrets/tokens.
