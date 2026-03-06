@@ -82,9 +82,11 @@ try{
     if(nums.length>=2){
       const raw=(v.challenge_text||'').toLowerCase();
       let value;
-      if(/multipl|times|product/.test(raw)) value=nums[0]*nums[1];
-      else if(/minus|subtract|difference/.test(raw)) value=nums[0]-nums[1];
-      else value=nums[0]+nums[1];
+      const isSubtract=/minus|subtract|difference|remain|left/.test(raw);
+      const isMultiply=/multipl|times|product|each\s+of|on\s+each|per\s+|total\s+force|altogether|in\s+total/.test(raw);
+      if(isSubtract) value=nums[0]-nums[1];
+      else if(isMultiply) value=nums.reduce((acc,n)=>acc*n,1);
+      else value=nums.reduce((acc,n)=>acc+n,0);
       const answer=(Math.round(value*100)/100).toFixed(2);
       fs.writeFileSync(`output/moltbook/verify_${pick.id}_${ts}.json`,JSON.stringify({verification_code:v.verification_code,answer,challenge_text:v.challenge_text,nums}));
       const vr=run(`curl -sS -X POST "${base}/verify" -H '${auth}' -H 'Content-Type: application/json' --data '{"verification_code":"${v.verification_code}","answer":"${answer}"}'`);
