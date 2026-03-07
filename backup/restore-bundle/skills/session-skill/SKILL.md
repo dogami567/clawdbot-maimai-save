@@ -9,19 +9,23 @@ Maintain cross-session memory without writing channel plugins.
 
 ## Do This Workflow
 
-1. Get sessions with `sessions_list`.
-2. Select target sessions (usually `channel=onebot`, `kind=group|other`).
-3. Pull message history with `sessions_history(includeTools=false)`.
+1. Prefer the deterministic sync script, not hand-written rollups:
+   - `node ./scripts/session-chatlog-sync.mjs`
+   - Use `--prune` only for an operator-approved cleanup rebuild.
+2. Treat the script output as the canonical derived archive:
+   - `memory/chatlog/index.jsonl`
+   - `memory/chatlog/YYYY-MM-DD/<channel>/*.md`
+3. Only fall back to `sessions_history(includeTools=false)` when:
+   - the sync script is unavailable
+   - or you need the newest unsynced tail right now
 4. Keep only conversational turns:
-   - Include `role=user` and `role=assistant` text.
-   - Skip tool calls, thinking, and empty text.
-   - Skip assistant text exactly equal to `NO_REPLY`.
-5. Parse metadata:
-   - From session key: channel/group/session scope.
-   - From user text suffix like `[from: name (id)]` when present.
-   - Preserve source `sessionKey` for traceability.
-6. Write daily logs under `memory/chatlog/YYYY-MM-DD/...` using the schema in `references/log-schema.md`.
-7. Append a flat index line into `memory/chatlog/index.jsonl` for fast recall.
+   - Include `role=user` and `role=assistant` final text.
+   - Skip tool calls, thinking, empty text, `NO_REPLY`, and synthetic system noise.
+   - Strip reply directive tags like `[[reply_to_current]]`.
+5. Preserve traceability:
+   - Every derived file must keep `sessionKey`, `sessionId`, and the raw transcript path.
+   - Raw session logs live under `~/.clawdbot/agents/<agentId>/sessions/`.
+   - `sessions_list` exposes `transcriptPath`; use it when you need the original `.jsonl`.
 
 ## File Layout
 
@@ -32,19 +36,22 @@ Maintain cross-session memory without writing channel plugins.
 ## Recall Strategy
 
 When the user asks “other groups how did you handle X”, search in this order:
-1. `memory/chatlog/index.jsonl` (fast filter by keyword/group/user/date)
-2. Matching daily md files for final context
+1. `memory_search` for `memory/chatlog/*.md`
+2. `memory_get` or `read` on the matching daily md file
+3. `sessions_list` to locate `transcriptPath` when the derived log is missing or needs audit
+4. `sessions_history(includeTools=false)` only as a short-tail fallback
 
 Prefer quoting concise snippets from archived logs, then summarize.
 
 ## Maintenance
 
 If user wants automatic rollup, create a cron job that triggers an isolated agent turn every 30-60 minutes with a prompt like:
-- “Run session-skill rollup for today and update `memory/chatlog`.”
+- “Run `node ./scripts/session-chatlog-sync.mjs` and verify `memory/chatlog`.”
 
 Keep rollup idempotent:
-- Deduplicate by `sessionKey + messageId + role + timestamp`.
-- Do not rewrite old lines unless correcting malformed metadata.
+- The sync script should rewrite files it is actively syncing, but preserve older archived files by default.
+- Use `--prune` only when you explicitly want to delete unmatched derived files after confirming the raw `.jsonl` source still exists.
+- Raw `.jsonl` transcripts are the source of truth.
 
 ## Daily Summary To Permanent Memory
 
@@ -85,7 +92,20 @@ Consolidation rules:
 At session start, load:
 - `MEMORY.md` (main session only)
 - `memory/YYYY-MM-DD.md` and yesterday file
+- `memory/chatlog/index.jsonl` when historical recall is likely
 - then apply this skill for recall/rollup
+
+## Raw Log Locations
+
+- Raw session store: `~/.clawdbot/agents/main/sessions/sessions.json`
+- Raw per-session transcript: `~/.clawdbot/agents/main/sessions/<sessionId>.jsonl`
+- In Docker runtime these usually resolve to `/home/node/.clawdbot/agents/main/sessions/`
+- Derived clean archive: `memory/chatlog/YYYY-MM-DD/<channel>/*.md`
+
+If compaction happened and prior turns are no longer visible in the active model context:
+1. search `memory/chatlog` first
+2. if needed, use `sessions_list` to get `transcriptPath`
+3. read the raw `.jsonl` only for audit or repair, not as the normal recall surface
 
 ## References
 

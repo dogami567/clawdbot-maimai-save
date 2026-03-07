@@ -48,6 +48,23 @@
             "maxTokens": "__REDACTED__"
           },
           {
+            "id": "gpt-5.4",
+            "name": "gpt-5.4",
+            "reasoning": true,
+            "input": [
+              "text",
+              "image"
+            ],
+            "cost": {
+              "input": 1.75,
+              "output": 14,
+              "cacheRead": 0.175,
+              "cacheWrite": 0.175
+            },
+            "contextWindow": 1000000,
+            "maxTokens": "__REDACTED__"
+          },
+          {
             "id": "gpt-5.2",
             "name": "gpt-5.2",
             "reasoning": true,
@@ -71,7 +88,7 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "gmn/gpt-5.3-codex"
+        "primary": "gmn/gpt-5.4"
       },
       "imageModel": {
         "primary": "gmn/gpt-5.2"
@@ -79,6 +96,9 @@
       "models": {
         "gmn/gpt-5.3-codex": {
           "alias": "GPT 5.3 Codex"
+        },
+        "gmn/gpt-5.4": {
+          "alias": "GPT 5.4"
         },
         "gmn/gpt-5.2": {
           "alias": "GPT 5.2"

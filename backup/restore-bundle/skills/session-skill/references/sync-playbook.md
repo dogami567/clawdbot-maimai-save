@@ -6,39 +6,43 @@ Roll recent session messages into daily chatlog files for cross-group recall.
 
 ## Manual Sync Loop
 
-1. Call `sessions_list(limit=100, messageLimit=1)`.
-2. Pick active sessions you care about.
-3. For each session, call `sessions_history(sessionKey, includeTools=false, limit=200)`.
-4. Extract text turns and metadata.
-5. Append formatted entries to daily md + `index.jsonl`.
-6. Deduplicate against existing `messageId` (or fallback hash).
+1. Run `node ./scripts/session-chatlog-sync.mjs`.
+2. Read the JSON result and confirm `ok: true`.
+3. Default mode is incremental archive sync; only add `--prune` during an explicit cleanup rebuild.
+4. Use `memory/chatlog/index.jsonl` plus daily md files as the clean recall surface.
+5. Only if the script cannot run, fall back to `sessions_list` + `sessions_history(includeTools=false)`.
 
 ## Metadata Parsing
 
 - `sessionKey` patterns:
   - `agent:main:onebot:group:<groupId>`
   - `agent:main:main` (owner DM)
+- `sessions_list` exposes `transcriptPath`; that is the original raw log.
+- In Docker, the raw transcript usually lives under `/home/node/.clawdbot/agents/main/sessions/`.
 - `userName/userId` fallback:
   - Parse from user text suffix `[from: <name> (<id>)]`
   - Else set `unknown`
 
 ## Dedup Keys
 
-Preferred: `sessionKey + messageId + role`
+Preferred raw identity: transcript `eventId`
 
-Fallback (if no `messageId`):
-`sessionKey + role + timestamp + sha1(text)`
+Conversation-level fallback:
+- user: `sessionKey + messageId + role`
+- assistant mirror dedupe: same role + same normalized text + near-identical timestamp
 
 ## Cron Suggestion
 
 Run every 30-60 min with isolated `agentTurn` payload:
 
-- Message: `Run session-skill rollup for today. Update memory/chatlog and keep idempotent.`
+- Message: `Use exec to run node ./scripts/session-chatlog-sync.mjs. Verify memory/chatlog is updated.`
+- Add `--prune` only for manual cleanup, not for routine cron sync.
 - Session target: `isolated`
 
 ## Retrieval Pattern
 
 When user asks historical question:
-1. grep `index.jsonl` by keyword/group/user/date
+1. use `memory_search` on `memory/chatlog`
 2. open referenced md file for context
-3. answer with concise summary + where it happened
+3. use `sessions_list` -> `transcriptPath` only if you need the raw `.jsonl`
+4. answer with concise summary + where it happened
