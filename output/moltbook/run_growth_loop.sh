@@ -102,45 +102,75 @@ if(commentAllowed){
 
     const v=c?.comment?.verification;
     if(v?.verification_code){
-      const challenge=(v.challenge_text||'').toLowerCase().replace(/[^a-z0-9\s]/g,' ');
+      const raw=(v.challenge_text||'').toLowerCase();
+      const challenge=raw.replace(/[^a-z0-9\s]/g,' ');
       const tokens=challenge.split(/\s+/).filter(Boolean);
       const ones={zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19};
       const tens={twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
       const wordKeys=[...Object.keys(tens),...Object.keys(ones)].sort((a,b)=>b.length-a.length);
-      const matchWord=(token)=>{
-        if(!token) return null;
-        if(/^\d+(\.\d+)?$/.test(token)) return parseFloat(token);
+      const alphaOnly=(token='')=>token.toLowerCase().replace(/[^a-z]/g,'');
+      const matchExactOrNoisyWord=(joined,{allowSubstring=false}={})=>{
+        if(!joined) return null;
         for(const word of wordKeys){
-          if(token===word || token.includes(word)) return word;
+          if(joined===word) return word;
+          if(allowSubstring && joined.includes(word) && joined.length<=word.length+2) return word;
+        }
+        return null;
+      };
+      const readWordAt=(start)=>{
+        const first=tokens[start];
+        if(!first) return null;
+        if(/^\d+(\.\d+)?$/.test(first)) return {word:null,value:parseFloat(first),consumed:1,source:[first]};
+        for(let width=Math.min(4,tokens.length-start); width>=1; width--){
+          const slice=tokens.slice(start,start+width);
+          const joined=alphaOnly(slice.join(''));
+          const matched=matchExactOrNoisyWord(joined,{allowSubstring:width===1});
+          if(matched) return {word:matched,value:null,consumed:width,source:slice};
         }
         return null;
       };
       const nums=[];
+      const matchedSpans=[];
       for(let i=0;i<tokens.length;i++){
-        const t=tokens[i];
-        const match=matchWord(t);
-        if(match===null) continue;
-        if(typeof match==='number'){nums.push(match);continue;}
-        if(tens[match]!==undefined){
-          let n=tens[match];
-          const nextMatch=matchWord(tokens[i+1]);
-          if(typeof nextMatch==='string' && ones[nextMatch]!==undefined && ones[nextMatch] < 10){n+=ones[nextMatch];i++;}
-          nums.push(n);
+        const current=readWordAt(i);
+        if(!current) continue;
+        if(current.word===null){
+          nums.push(current.value);
+          matchedSpans.push({tokens:current.source,value:current.value});
+          i+=current.consumed-1;
           continue;
         }
-        if(ones[match]!==undefined) nums.push(ones[match]);
+        if(tens[current.word]!==undefined){
+          let n=tens[current.word];
+          let consumed=current.consumed;
+          const next=readWordAt(i+current.consumed);
+          if(next?.word && ones[next.word]!==undefined && ones[next.word] < 10){
+            n+=ones[next.word];
+            consumed+=next.consumed;
+            matchedSpans.push({tokens:[...current.source,...next.source],value:n});
+          }else{
+            matchedSpans.push({tokens:current.source,value:n});
+          }
+          nums.push(n);
+          i+=consumed-1;
+          continue;
+        }
+        if(ones[current.word]!==undefined){
+          nums.push(ones[current.word]);
+          matchedSpans.push({tokens:current.source,value:ones[current.word]});
+          i+=current.consumed-1;
+        }
       }
 
       if(nums.length>=2){
-        const raw=(v.challenge_text||'').toLowerCase();
         let value;
         const isSubtract=/minus|subtract|difference|remain|left/.test(raw);
-        const isMultiply=/multipl|times|product|each\s+of|on\s+each|per\s+|total\s+force|altogether|in\s+total/.test(raw);
+        const isMultiply=/multipl|times|product|each\s+of|on\s+each|per\s+/.test(raw);
         if(isSubtract) value=nums[0]-nums[1];
         else if(isMultiply) value=nums.reduce((acc,n)=>acc*n,1);
         else value=nums.reduce((acc,n)=>acc+n,0);
         const answer=(Math.round(value*100)/100).toFixed(2);
-        fs.writeFileSync(`output/moltbook/verify_${pick.id}_${ts}.json`,JSON.stringify({verification_code:v.verification_code,answer,challenge_text:v.challenge_text,nums}));
+        fs.writeFileSync(`output/moltbook/verify_${pick.id}_${ts}.json`,JSON.stringify({verification_code:v.verification_code,answer,challenge_text:v.challenge_text,nums,matchedSpans}));
         const vr=run(`curl -sS -X POST "${base}/verify" -H '${auth}' -H 'Content-Type: application/json' --data '{"verification_code":"${v.verification_code}","answer":"${answer}"}'`);
         fs.writeFileSync(`output/moltbook/verify_resp_${pick.id}_${ts}.json`,vr);
         const out=JSON.parse(vr);
@@ -148,7 +178,7 @@ if(commentAllowed){
         verifyMsg=out?.message||null;
       }else{
         verifyStatus='parse_failed';
-        fs.writeFileSync(`output/moltbook/verify_parse_fail_${ts}.json`,JSON.stringify({challenge_text:v.challenge_text,tokens,nums}));
+        fs.writeFileSync(`output/moltbook/verify_parse_fail_${ts}.json`,JSON.stringify({challenge_text:v.challenge_text,tokens,nums,matchedSpans}));
       }
     }
   }catch(e){
