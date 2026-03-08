@@ -15,7 +15,6 @@
 - 定时天气播报偏好：提醒文本和实时天气结果都要发；默认发回当前 QQ 会话，只有明确要求发私聊时才固定发到用户 QQ 私聊。
 - QQ 主动定时提醒实现规则：优先用 cron `sessionTarget=isolated` + `agentTurn` + `deliver:true`。目标默认跟随当前会话（私聊 `user:<当前QQ>` / 群聊 `group:<当前群号>`）；只有明确要求发到用户 QQ 私聊时，才显式写 `channel=onebot` / `to=user:281894872`。不要再用依赖 heartbeat 的 `main + systemEvent + next-heartbeat` 方案。
 - 长任务沟通偏好：方向确认后可连续推进，减少碎片化过程播报；优先“做完一段再汇报”。
-- 长任务沟通偏好：方向确认后可连续推进，减少碎片化过程播报；优先“做完一段再汇报”。
 
 ## Codex & Bridge Rules
 - 术语默认：用户说“Codex”即宿主机 Codex（非容器内）。
@@ -31,6 +30,7 @@
 - 搜索交互：用户未指定模式时，先给意图推荐 + 其他模式一句话说明，再让用户确认或切换。
 - 搜索默认路径：优先本地 Exa router（如 `./scripts/search`），`web_search` 作为 fallback。
 - 模型路由偏好：可行时优先 LinkAPI（`xiaodoubao-skill`）以降低成本。
+- 开发/方案讨论偏好：先搜索或查证，再和用户沟通拍板，再动手实现；不接受长时间闷头写完才回报。
 
 ## Durable Facts
 - OneBot QQ 集成已连通；图片发送链路已修到 CQ image 方案。
