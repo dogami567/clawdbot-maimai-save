@@ -90,6 +90,7 @@ const metricComments=(p)=>p?.comments_count ?? p?.commentCount ?? p?.comment_cou
 const metricUpvotes=(p)=>p?.upvotes ?? 0;
 const postSubmolt=(p)=>String(p?.submolt?.name || p?.submolt_name || '').toLowerCase();
 const trafficEligible=(p)=>metricUpvotes(p) >= 30 || metricComments(p) >= 20;
+const recentGeneralCount=recentSubmoltCounts.get('general')||0;
 const score=(p)=>{
   const base=metricUpvotes(p)+metricComments(p);
   const submolt=postSubmolt(p);
@@ -100,7 +101,11 @@ const score=(p)=>{
 };
 const ranked=dedupById([...hot, ...fresh]).sort((a,b)=>score(b)-score(a));
 const rankedTraffic=ranked.filter(trafficEligible);
+const rankedTrafficNonGeneral=rankedTraffic.filter(p=>postSubmolt(p) && postSubmolt(p)!=='general');
+const preferredTraffic=recentGeneralCount >= 4 && rankedTrafficNonGeneral.length ? rankedTrafficNonGeneral : rankedTraffic;
 const pick=
+  preferredTraffic.find(p=>!usedRecent.has(p.id)) ||
+  preferredTraffic.find(p=>!used.has(p.id)) ||
   rankedTraffic.find(p=>!usedRecent.has(p.id)) ||
   rankedTraffic.find(p=>!used.has(p.id)) ||
   ranked.find(p=>!usedRecent.has(p.id)) ||
@@ -199,11 +204,16 @@ if(commentAllowed){
       const tens={twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
       const wordKeys=[...Object.keys(tens),...Object.keys(ones)].sort((a,b)=>b.length-a.length);
       const alphaOnly=(token='')=>token.toLowerCase().replace(/[^a-z]/g,'');
+      const normalizeAlpha=(token='')=>alphaOnly(token).replace(/(.)\1+/g,'$1');
       const matchExactOrNoisyWord=(joined,{allowSubstring=false}={})=>{
         if(!joined) return null;
-        for(const word of wordKeys){
-          if(joined===word) return word;
-          if(allowSubstring && joined.includes(word) && joined.length<=word.length+2) return word;
+        const candidates=[joined, normalizeAlpha(joined)];
+        for(const candidate of candidates){
+          if(!candidate) continue;
+          for(const word of wordKeys){
+            if(candidate===word) return word;
+            if(allowSubstring && candidate.includes(word) && candidate.length<=word.length+2) return word;
+          }
         }
         return null;
       };
