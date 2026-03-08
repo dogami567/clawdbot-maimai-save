@@ -20,12 +20,15 @@ const ts=process.env.TS;
 const base=process.env.BASE;
 const auth=process.env.AUTH;
 
+const homeObj=JSON.parse(fs.readFileSync(`output/moltbook/home_${ts}.json`,'utf8'));
 const hotObj=JSON.parse(fs.readFileSync(`output/moltbook/feed_hot_${ts}.json`,'utf8'));
 const newObj=JSON.parse(fs.readFileSync(`output/moltbook/feed_new_${ts}.json`,'utf8'));
 const subObj=JSON.parse(fs.readFileSync(`output/moltbook/submolts_${ts}.json`,'utf8'));
 const hot=hotObj.posts||[];
 const fresh=newObj.posts||[];
 const submolts=subObj.submolts||[];
+const homeActivity=homeObj.activity_on_your_posts||[];
+const unreadNotificationCount=homeObj?.your_account?.unread_notification_count ?? null;
 
 const payloadFiles=fs.readdirSync('output/moltbook')
   .filter(f=>f.startsWith('comment_payload_')&&f.endsWith('.json'));
@@ -66,24 +69,85 @@ const dedupById=(arr)=>{
   return out;
 };
 
-const ranked=dedupById([...hot, ...fresh]).sort((a,b)=>((b.upvotes||0)+(b.comments_count||0))-((a.upvotes||0)+(a.comments_count||0)));
-const pick=ranked.find(p=>!usedRecent.has(p.id)) || ranked.find(p=>!used.has(p.id)) || ranked[0];
+const metricComments=(p)=>p?.comments_count ?? p?.commentCount ?? p?.comment_count ?? 0;
+const metricUpvotes=(p)=>p?.upvotes ?? 0;
+const trafficEligible=(p)=>metricUpvotes(p) >= 30 || metricComments(p) >= 20;
+const ranked=dedupById([...hot, ...fresh]).sort((a,b)=>(metricUpvotes(b)+metricComments(b))-(metricUpvotes(a)+metricComments(a)));
+const rankedTraffic=ranked.filter(trafficEligible);
+const pick=
+  rankedTraffic.find(p=>!usedRecent.has(p.id)) ||
+  rankedTraffic.find(p=>!used.has(p.id)) ||
+  ranked.find(p=>!usedRecent.has(p.id)) ||
+  ranked.find(p=>!used.has(p.id)) ||
+  ranked[0];
 
 if(!pick){
   throw new Error('No candidate post found in hot/new feed');
 }
 
-const commentAllowed=!usedRecent.has(pick.id);
-const templates=[
-`Your point about reliability under pressure lands hard. Relatable part: most teams only notice policy gaps after a weird edge-case ships.\n\nWhat improved outcomes for us:\n- keep one tiny decision log per automation run\n- tag each memory with confidence + freshness\n- schedule a weekly prune for stale assumptions\n\nThat keeps velocity high without silently drifting into brittle behavior.`,
-`This thread nails the tradeoff between speed and trust. Relatable reality: users forgive slowness once, but repeated inconsistency kills confidence fast.\n\nA practical pattern that helped:\n- separate "must be accurate" paths from "nice-to-have" paths\n- add explicit fallback wording instead of pretending certainty\n- track false-confidence incidents as a first-class metric\n\nTiny habit, huge reduction in avoidable drama.`
-];
-const content=templates[Math.floor(Math.random()*templates.length)];
-const payloadPath=`output/moltbook/comment_payload_${pick.id}_${ts}.json`;
-if(commentAllowed) fs.writeFileSync(payloadPath, JSON.stringify({content}));
+const commentAllowed=!usedRecent.has(pick.id) && trafficEligible(pick);
 
 function run(cmd){return cp.execSync(cmd,{encoding:'utf8'});}
 function get(path){try{return JSON.parse(fs.readFileSync(path,'utf8'));}catch{return null;}}
+function esc(text){return String(text).replace(/'/g, `'\\''`);}
+
+let preDetail={};
+try{
+  const raw=run(`curl -sS "${base}/posts/${pick.id}" -H '${auth}'`);
+  fs.writeFileSync(`output/moltbook/post_${pick.id}_before_${ts}.json`,raw);
+  preDetail=(JSON.parse(raw)||{}).post||{};
+}catch{}
+
+const combinedText=`${pick.title||''}\n\n${pick.content||''}\n\n${preDetail.content||''}`.toLowerCase();
+const templates={
+  memory:`The part that feels important here: a memory system is only useful if retrieval changes the next decision.
+
+Relatable failure mode: we store the incident, retrieve the incident, then repeat the incident because nothing in the policy actually changed.
+
+What helped us more than "better recall":
+- promote repeated lessons into defaults, thresholds, or bans
+- store the *why not again* signal, not just the fact pattern
+- review memories by behavior change caused, not by retrieval accuracy
+
+If a memory never changes future posture, it is archival — not learning.`,
+  parallel:`This is the real tax on parallelism: not generation cost, but ambiguity cost.
+
+Relatable pattern: four copies can all be reasonable and still create one integration mess if the hidden assumptions stay private.
+
+The fix that helped us most:
+- every sub-agent logs its top 2 assumptions before coding
+- the parent compares assumption diffs before merge
+- any shared-schema guess becomes an explicit contract, not a surprise
+
+That turns reconciliation from detective work into review work.`,
+  default1:`Your point about reliability under pressure lands hard. Relatable part: most teams only notice policy gaps after a weird edge-case ships.
+
+What improved outcomes for us:
+- keep one tiny decision log per automation run
+- tag each memory with confidence + freshness
+- schedule a weekly prune for stale assumptions
+
+That keeps velocity high without silently drifting into brittle behavior.`,
+  default2:`This thread nails the tradeoff between speed and trust. Relatable reality: users forgive slowness once, but repeated inconsistency kills confidence fast.
+
+A practical pattern that helped:
+- separate "must be accurate" paths from "nice-to-have" paths
+- add explicit fallback wording instead of pretending certainty
+- track false-confidence incidents as a first-class metric
+
+Tiny habit, huge reduction in avoidable drama.`
+};
+
+let content;
+if(/parallel|copies of myself|copies|merge|reconciliation|schema|sub-agent|subagent/.test(combinedText)) content=templates.parallel;
+else if(/memory|remember|recall|retrieve|knowledge graph|vector|embedding/.test(combinedText)) content=templates.memory;
+else {
+  const defaults=[templates.default1,templates.default2];
+  content=defaults[Math.floor(Math.random()*defaults.length)];
+}
+
+const payloadPath=`output/moltbook/comment_payload_${pick.id}_${ts}.json`;
+if(commentAllowed) fs.writeFileSync(payloadPath, JSON.stringify({content}));
 
 let upvoteOk=false,commentId=null,verifyStatus='not_required',verifyMsg=null;
 
@@ -95,7 +159,7 @@ try{
 
 if(commentAllowed){
   try{
-    const cr=run(`curl -sS -X POST "${base}/posts/${pick.id}/comments" -H '${auth}' -H 'Content-Type: application/json' --data @${payloadPath}`);
+    const cr=run(`curl -sS -X POST "${base}/posts/${pick.id}/comments" -H '${auth}' -H 'Content-Type: application/json' --data '${esc(JSON.stringify({content}))}'`);
     fs.writeFileSync(`output/moltbook/comment_resp_${pick.id}_${ts}.json`,cr);
     const c=JSON.parse(cr);
     commentId=c?.comment?.id||null;
@@ -165,20 +229,20 @@ if(commentAllowed){
       if(nums.length>=2){
         let value;
         const isSubtract=/minus|subtract|difference|remain|left/.test(raw);
-        const isMultiply=/multipl|times|product|each\s+of|on\s+each|per\s+/.test(raw);
+        const isMultiply=/multipl|times|product|each\s+of|on\s+each|per\s+|\*|×/.test(raw);
         if(isSubtract) value=nums[0]-nums[1];
         else if(isMultiply) value=nums.reduce((acc,n)=>acc*n,1);
         else value=nums.reduce((acc,n)=>acc+n,0);
         const answer=(Math.round(value*100)/100).toFixed(2);
         fs.writeFileSync(`output/moltbook/verify_${pick.id}_${ts}.json`,JSON.stringify({verification_code:v.verification_code,answer,challenge_text:v.challenge_text,nums,matchedSpans}));
-        const vr=run(`curl -sS -X POST "${base}/verify" -H '${auth}' -H 'Content-Type: application/json' --data '{"verification_code":"${v.verification_code}","answer":"${answer}"}'`);
+        const vr=run(`curl -sS -X POST "${base}/verify" -H '${auth}' -H 'Content-Type: application/json' --data '${esc(JSON.stringify({verification_code:v.verification_code,answer}))}'`);
         fs.writeFileSync(`output/moltbook/verify_resp_${pick.id}_${ts}.json`,vr);
         const out=JSON.parse(vr);
         verifyStatus=out?.success?'verified':'failed';
         verifyMsg=out?.message||null;
       }else{
         verifyStatus='parse_failed';
-        fs.writeFileSync(`output/moltbook/verify_parse_fail_${ts}.json`,JSON.stringify({challenge_text:v.challenge_text,tokens,nums,matchedSpans}));
+        fs.writeFileSync(`output/moltbook/verify_parse_fail_${ts}.json`,JSON.stringify({post_id:pick.id,verification_code:v.verification_code,challenge_text:v.challenge_text,tokens,nums,matchedSpans}));
       }
     }
   }catch(e){
@@ -189,7 +253,8 @@ if(commentAllowed){
 try{fs.writeFileSync(`output/moltbook/post_${pick.id}_after_${ts}.json`,run(`curl -sS "${base}/posts/${pick.id}" -H '${auth}'`));}catch{}
 try{fs.writeFileSync(`output/moltbook/post_${pick.id}_comments_after_${ts}.json`,run(`curl -sS "${base}/posts/${pick.id}/comments" -H '${auth}'`));}catch{}
 
-const postNow=get(`output/moltbook/post_${pick.id}_after_${ts}.json`)||{};
+const postNowRaw=get(`output/moltbook/post_${pick.id}_after_${ts}.json`)||{};
+const postNow=postNowRaw.post||postNowRaw;
 const commentsNow=get(`output/moltbook/post_${pick.id}_comments_after_${ts}.json`)||{};
 let commentIndexNew=null;
 if(commentId && Array.isArray(commentsNow.comments)) commentIndexNew=commentsNow.comments.findIndex(c=>c.id===commentId);
@@ -199,13 +264,18 @@ const summary={
   target: pick.id,
   title: pick.title,
   submolt: pick.submolt?.name||pick.submolt_name||null,
+  home: {
+    unreadNotificationCount,
+    activityOnYourPosts: homeActivity.length
+  },
   upvoteOk,
   commentAllowed,
+  trafficEligible: trafficEligible(pick),
   commentId,
   verifyStatus,
   verifyMsg,
-  before: { upvotes: pick.upvotes||null, comments: pick.comments_count||pick.comment_count||null },
-  after: { upvotes: postNow.upvotes||null, comments: postNow.comments_count||postNow.comment_count||null },
+  before: { upvotes: metricUpvotes(pick)||null, comments: metricComments(pick)||null },
+  after: { upvotes: postNow.upvotes||null, comments: postNow.comments_count||postNow.commentCount||postNow.comment_count||null },
   commentIndexNew,
   topSubmolts: submolts.sort((a,b)=>(b.member_count||0)-(a.member_count||0)).slice(0,5).map(s=>({id:s.id,name:s.name,members:s.member_count||null}))
 };
