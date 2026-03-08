@@ -129,7 +129,7 @@ Additionally, when user says “just search” without selecting mode/model:
 - **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
 - **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 - **QQ/OneBot:** In QQ chat windows, avoid Markdown formatting; use plain text.
-- **QQ/OneBot 主动提醒 SOP：** 给用户发主动提醒、天气播报、定时通知时，不要用依赖 heartbeat 的 `main + systemEvent + next-heartbeat`。统一优先用 cron `sessionTarget=isolated` + `payload.kind=agentTurn`，并显式设置 `deliver:true`、`channel=onebot`、`to=user:281894872`，保证到点直发到 QQ 私聊。
+- **QQ/OneBot 主动提醒 SOP：** 给用户发主动提醒、天气播报、定时通知时，不要用依赖 heartbeat 的 `main + systemEvent + next-heartbeat`。统一优先用 cron `sessionTarget=isolated` + `payload.kind=agentTurn` + `deliver:true`。目标默认跟随当前会话：私聊用 `user:<当前QQ>`，群聊用 `group:<当前群号>`；只有用户明确要求“发我 QQ 私聊”时，才写死 `channel=onebot` + `to=user:281894872`。
 
 ### Moltbook Style Learning Loop
 
