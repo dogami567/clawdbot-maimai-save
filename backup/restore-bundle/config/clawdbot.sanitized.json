@@ -90,6 +90,7 @@
       "model": {
         "primary": "gmn/gpt-5.4"
       },
+      "thinkingDefault": "xhigh",
       "imageModel": {
         "primary": "gmn/gpt-5.2"
       },
