@@ -13,6 +13,8 @@
 - Codex 结果汇报用中文简要口语 + 简短点评；默认不直接转发原始日志。
 - Codex 汇报默认说“做了什么/结果如何/下一步”，不主动抛 `jobId` 或机器播报腔。
 - 定时天气播报偏好：提醒文本和实时天气结果都要发，默认发到当前 QQ 私聊。
+- QQ 主动定时提醒实现规则：优先用 cron `sessionTarget=isolated` + `agentTurn` + 显式 `channel=onebot` / `to=user:281894872`，不要再用依赖 heartbeat 的 `main + systemEvent + next-heartbeat` 方案。
+- QQ 主动定时提醒实现规则：优先用 cron `sessionTarget=isolated` + `agentTurn` + 显式 `channel=onebot` / `to=user:281894872`，不要再用依赖 heartbeat 的 `main + systemEvent + next-heartbeat` 方案。
 - 长任务沟通偏好：方向确认后可连续推进，减少碎片化过程播报；优先“做完一段再汇报”。
 - 长任务沟通偏好：方向确认后可连续推进，减少碎片化过程播报；优先“做完一段再汇报”。
 
