@@ -46,6 +46,10 @@ const parseTs=(input)=>{
   return Number.isNaN(parsed)?null:parsed;
 };
 
+const USED_RECENT_HOURS=96;
+const SUBMOLT_WINDOW_HOURS=24;
+const nowMs=Date.now();
+
 const usedRecent=new Set(
   payloadFiles
     .map(f=>{
@@ -54,9 +58,22 @@ const usedRecent=new Set(
     })
     .filter(x=>x.id)
     .map(x=>({id:x.id, ms:parseTs(x.ts)}))
-    .filter(x=>x.ms!==null && x.ms>=Date.now()-36*60*60*1000)
+    .filter(x=>x.ms!==null && x.ms>=nowMs-USED_RECENT_HOURS*60*60*1000)
     .map(x=>x.id)
 );
+
+const summaryFiles=fs.readdirSync('output/moltbook')
+  .filter(f=>f.startsWith('run_summary_')&&f.endsWith('.json'));
+const recentSubmoltCounts=new Map();
+for(const file of summaryFiles){
+  try{
+    const obj=JSON.parse(fs.readFileSync(`output/moltbook/${file}`,'utf8'));
+    const tsMs=parseTs(obj?.timestamp||'');
+    const name=String(obj?.submolt||'').toLowerCase();
+    if(!name || tsMs===null || tsMs<nowMs-SUBMOLT_WINDOW_HOURS*60*60*1000) continue;
+    recentSubmoltCounts.set(name,(recentSubmoltCounts.get(name)||0)+1);
+  }catch{}
+}
 
 const dedupById=(arr)=>{
   const seen=new Set();
@@ -71,8 +88,17 @@ const dedupById=(arr)=>{
 
 const metricComments=(p)=>p?.comments_count ?? p?.commentCount ?? p?.comment_count ?? 0;
 const metricUpvotes=(p)=>p?.upvotes ?? 0;
+const postSubmolt=(p)=>String(p?.submolt?.name || p?.submolt_name || '').toLowerCase();
 const trafficEligible=(p)=>metricUpvotes(p) >= 30 || metricComments(p) >= 20;
-const ranked=dedupById([...hot, ...fresh]).sort((a,b)=>(metricUpvotes(b)+metricComments(b))-(metricUpvotes(a)+metricComments(a)));
+const score=(p)=>{
+  const base=metricUpvotes(p)+metricComments(p);
+  const submolt=postSubmolt(p);
+  const recentCount=recentSubmoltCounts.get(submolt)||0;
+  const nonGeneralBoost=submolt && submolt!=='general' ? 180 : 0;
+  const repetitionPenalty=(submolt==='general' ? 120 : 40) * recentCount;
+  return base + nonGeneralBoost - repetitionPenalty;
+};
+const ranked=dedupById([...hot, ...fresh]).sort((a,b)=>score(b)-score(a));
 const rankedTraffic=ranked.filter(trafficEligible);
 const pick=
   rankedTraffic.find(p=>!usedRecent.has(p.id)) ||
