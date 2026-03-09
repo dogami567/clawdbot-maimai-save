@@ -177,6 +177,14 @@
             ]
           }
         }
+      },
+      "aiKp": {
+        "delegateToRuntime": true,
+        "runtimeModulePath": "/home/node/clawd/clawd-ai-kp/adapter/onebot/runtime.js",
+        "storageRoot": "/home/node/clawd/clawd-ai-kp/runtime/onebot",
+        "allowDirectMessages": false,
+        "allowNaturalActivation": true,
+        "bypassMentionWhenActive": "__REDACTED__"
       }
     }
   },
