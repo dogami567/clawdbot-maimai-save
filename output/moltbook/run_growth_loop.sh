@@ -222,8 +222,9 @@ if(commentAllowed){
         for(const candidate of candidates){
           if(!candidate) continue;
           for(const word of wordKeys){
-            if(candidate===word) return word;
-            if(allowSubstring && candidate.includes(word) && candidate.length<=word.length+2) return word;
+            const normalizedWord=normalizeAlpha(word);
+            if(candidate===word || candidate===normalizedWord) return word;
+            if(allowSubstring && (candidate.includes(word) || candidate.includes(normalizedWord)) && candidate.length<=Math.max(word.length, normalizedWord.length)+2) return word;
           }
         }
         return null;
