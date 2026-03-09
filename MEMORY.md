@@ -30,11 +30,13 @@
 - 搜索交互：用户未指定模式时，先给意图推荐 + 其他模式一句话说明，再让用户确认或切换。
 - 搜索默认路径：优先本地 Exa router（如 `./scripts/search`），`web_search` 作为 fallback。
 - 模型路由偏好：可行时优先 LinkAPI（`xiaodoubao-skill`）以降低成本。
+- 后台 isolated cron 偏好：统一使用 `gpt-5.4` + `high`；主聊天若要改思考强度，提醒用户用 `/think` 手动切。
 - 开发/方案讨论偏好：先搜索或查证，再和用户沟通拍板，再动手实现；不接受长时间闷头写完才回报。
 
 ## Durable Facts
 - OneBot QQ 集成已连通；图片发送链路已修到 CQ image 方案。
-- `clawd-ai-kp` 已从“文档/核心 demo”推进到“核心引擎 + 旧教堂场景包 + OneBot 单群单会话适配 + 基础面板与车卡指令”的可试玩阶段。
+- `clawd-ai-kp` 已进入“可测试 / 联调”阶段：现有核心引擎 + 旧教堂场景包 + OneBot 单群单会话适配 + 基础面板与车卡指令已能试玩，但正式消息链接线、真群 smoke test、回环/多人输入等收口仍未完成。
+- `ai-kp` 的场景导入链路已能产出 `scene json` 骨架（如 `imported-scene.scene.json`），但新导入场景默认还需补 `areas/clues/events/nextOptions` 等内容后才真正可玩。
 - Webhook 在用地址：
   - 宿主机：`http://127.0.0.1:18789/hooks/agent`
   - 容器到宿主机：`http://host.docker.internal:18789/hooks/agent`
